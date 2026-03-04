@@ -55,6 +55,7 @@ from config.settings import (
     LANGFLOW_URL_INGEST_FLOW_ID,
     SESSION_SECRET,
     clients,
+    config_manager,
     get_embedding_model,
     get_index_name,
     is_no_auth_mode,
@@ -515,6 +516,89 @@ async def _ingest_default_documents_url(session_manager, docs_url: str, crawl_de
         )
         resp.raise_for_status()
 
+
+async def _delete_existing_default_docs(session_manager):
+    """Delete previously ingested default OpenRAG docs before reingestion."""
+    from session_manager import AnonymousUser
+
+    if session_manager is None:
+        logger.warning(
+            "Session manager unavailable; skipping default docs cleanup before reingestion"
+        )
+        return
+
+    anonymous_user = AnonymousUser()
+    effective_jwt = None
+    if session_manager:
+        session_manager.get_user_opensearch_client(anonymous_user.user_id, effective_jwt)
+        if hasattr(session_manager, "_anonymous_jwt"):
+            effective_jwt = session_manager._anonymous_jwt
+
+    opensearch_client = session_manager.get_user_opensearch_client(
+        anonymous_user.user_id, effective_jwt
+    )
+    delete_query = {
+        "query": {
+            "bool": {
+                "must": [
+                    {"term": {"connector_type": "system_default"}},
+                    {"term": {"owner_email": anonymous_user.email}},
+                ]
+            }
+        }
+    }
+    result = await opensearch_client.delete_by_query(
+        index=get_index_name(),
+        body=delete_query,
+        conflicts="proceed",
+    )
+    logger.info(
+        "Deleted existing default OpenRAG docs before reingestion",
+        deleted_chunks=result.get("deleted", 0),
+    )
+
+
+async def _reingest_default_docs_on_upgrade_if_needed(
+    document_service,
+    task_service,
+    langflow_file_service,
+    session_manager,
+):
+    """Reingest default OpenRAG docs once when app version changes."""
+    config = get_openrag_config()
+
+    previous_version = config.onboarding.openrag_docs_ingested_version
+    current_version = OPENRAG_VERSION
+    should_reingest = bool(previous_version) and previous_version != current_version
+
+    # Legacy installs may not have a stored docs ingestion version.
+    # Use the presence of the OpenRAG docs filter as the signal that docs were
+    # already onboarded, independent of whether config.edited is set.
+    if not previous_version and config.onboarding.openrag_docs_filter_id:
+        should_reingest = True
+
+    if not should_reingest:
+        return
+
+    logger.info(
+        "Detected OpenRAG upgrade; reingesting default docs",
+        previous_version=previous_version,
+        current_version=current_version,
+    )
+    await _delete_existing_default_docs(session_manager)
+    await ingest_default_documents_when_ready(
+        document_service,
+        task_service,
+        langflow_file_service,
+        session_manager,
+    )
+    config.onboarding.openrag_docs_ingested_version = current_version
+    if not config_manager.save_config_file(config):
+        logger.warning(
+            "Default docs were reingested but failed to persist ingested version",
+            current_version=current_version,
+        )
+
 async def health_check(request: Request):
     """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
     return JSONResponse({"status": "ok"}, status_code=200)
@@ -659,6 +743,17 @@ async def startup_tasks(services):
 
     # Configure alerting security
     await configure_alerting_security()
+
+    # Reingest bundled OpenRAG docs once after application upgrade.
+    try:
+        await _reingest_default_docs_on_upgrade_if_needed(
+            services["document_service"],
+            services["task_service"],
+            services["langflow_file_service"],
+            services["session_manager"],
+        )
+    except Exception as e:
+        logger.warning("Default docs reingestion on upgrade failed", error=str(e))
 
     # Update MCP servers with provider credentials (especially important for no-auth mode)
     await _update_mcp_servers_with_provider_credentials(services)

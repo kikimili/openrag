@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
+from utils.version_utils import OPENRAG_VERSION
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
     INGEST_SAMPLE_DATA,
@@ -84,6 +85,7 @@ class OnboardingStateBody(BaseModel):
     upload_steps: Optional[Dict[str, Any]] = None
     openrag_docs_filter_id: Optional[str] = None
     user_doc_filter_id: Optional[str] = None
+    openrag_docs_ingested_version: Optional[str] = None
 
 
 class DoclingPresetBody(BaseModel):
@@ -101,6 +103,7 @@ class OnboardingStateConfig(BaseModel):
     upload_steps: Optional[Dict[str, Any]]
     openrag_docs_filter_id: Optional[str]
     user_doc_filter_id: Optional[str]
+    openrag_docs_ingested_version: Optional[str]
 
 class OpenAIProviderConfig(BaseModel):
     has_api_key: bool
@@ -311,6 +314,7 @@ async def get_settings(
                 upload_steps=openrag_config.onboarding.upload_steps,
                 openrag_docs_filter_id=openrag_config.onboarding.openrag_docs_filter_id,
                 user_doc_filter_id=openrag_config.onboarding.user_doc_filter_id,
+                openrag_docs_ingested_version=openrag_config.onboarding.openrag_docs_ingested_version,
             ),
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
@@ -1010,6 +1014,7 @@ async def onboarding(
                         langflow_file_service,
                         session_manager,
                     )
+                    current_config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
                     logger.info("Sample data ingestion completed successfully")
 
                 except Exception as e:
@@ -1516,6 +1521,7 @@ async def rollback_onboarding(
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
         current_config.knowledge.embedding_model = ""
+        current_config.onboarding.openrag_docs_ingested_version = None
 
         # Mark config as not edited so user can go through onboarding again
         current_config.edited = False
