@@ -7,6 +7,7 @@ import type {
   DeleteDocumentResponse,
   IngestResponse,
   IngestTaskStatus,
+  NotFoundError,
 } from "./types";
 
 export interface IngestOptions {
@@ -149,14 +150,26 @@ export class DocumentsClient {
    * @returns DeleteDocumentResponse with deleted chunk count.
    */
   async delete(filename: string): Promise<DeleteDocumentResponse> {
-    const response = await this.client._request("DELETE", "/api/v1/documents", {
-      body: JSON.stringify({ filename }),
-    });
+    try {
+      const response = await this.client._request("DELETE", "/api/v1/documents", {
+        body: JSON.stringify({ filename }),
+      });
 
-    const data = await response.json();
-    return {
-      success: data.success ?? false,
-      deleted_chunks: data.deleted_chunks ?? 0,
-    };
+      const data = await response.json();
+      return {
+        success: data.success ?? false,
+        deleted_chunks: data.deleted_chunks ?? 0,
+      };
+    } catch (error) {
+      // Delete is idempotent: if no chunks match, backend may return 404.
+      // Surface this as a non-throwing "nothing deleted" response.
+      if ((error as NotFoundError)?.statusCode === 404) {
+        return {
+          success: false,
+          deleted_chunks: 0,
+        };
+      }
+      throw error;
+    }
   }
 }
