@@ -1,11 +1,14 @@
 "use client";
 
-import { AlertCircle, ArrowLeft } from "lucide-react";
+import { AlertCircle, ArrowLeft, RefreshCw } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import { useGetConnectorsQuery } from "@/app/api/queries/useGetConnectorsQuery";
 import { useGetConnectorTokenQuery } from "@/app/api/queries/useGetConnectorTokenQuery";
+import { useIBMCOSBucketStatusQuery } from "@/app/api/queries/useIBMCOSBucketStatusQuery";
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import type { IngestSettings } from "@/components/cloud-picker/types";
 import { Button } from "@/components/ui/button";
@@ -15,6 +18,179 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useTask } from "@/contexts/task-context";
+
+// Connectors that sync entire buckets/repositories without a file picker
+const DIRECT_SYNC_PROVIDERS = ["ibm_cos"];
+
+// ---------------------------------------------------------------------------
+// IBM COS bucket list with sync status
+// ---------------------------------------------------------------------------
+
+function IBMCOSBucketView({
+  connector,
+  syncMutation,
+  addTask,
+  onBack,
+  onDone,
+}: {
+  connector: any;
+  syncMutation: ReturnType<typeof useSyncConnector>;
+  addTask: (id: string) => void;
+  onBack: () => void;
+  onDone: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: buckets, isLoading, refetch } = useIBMCOSBucketStatusQuery(
+    connector.connectionId,
+    { enabled: true },
+  );
+
+  const [syncingBucket, setSyncingBucket] = useState<string | null>(null);
+
+  const invalidateBucketStatus = () => {
+    queryClient.invalidateQueries({ queryKey: ["ibm-cos-bucket-status", connector.connectionId] });
+  };
+
+  const syncAll = () => {
+    syncMutation.mutate(
+      {
+        connectorType: connector.type,
+        body: {
+          connection_id: connector.connectionId!,
+          selected_files: [],
+          sync_all: true,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          invalidateBucketStatus();
+          if (result.task_ids?.length) {
+            addTask(result.task_ids[0]);
+            onDone();
+          } else {
+            toast.info("No files found in any bucket.");
+          }
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : "Sync failed");
+        },
+      },
+    );
+  };
+
+  const syncBucket = (bucketName: string) => {
+    setSyncingBucket(bucketName);
+    syncMutation.mutate(
+      {
+        connectorType: connector.type,
+        body: {
+          connection_id: connector.connectionId!,
+          selected_files: [],
+          bucket_filter: [bucketName],
+        },
+      },
+      {
+        onSuccess: (result) => {
+          setSyncingBucket(null);
+          invalidateBucketStatus();
+          if (result.task_ids?.length) {
+            addTask(result.task_ids[0]);
+            onDone();
+          } else {
+            toast.info(`No files found in bucket "${bucketName}".`);
+          }
+        },
+        onError: (err) => {
+          setSyncingBucket(null);
+          toast.error(err instanceof Error ? err.message : "Sync failed");
+        },
+      },
+    );
+  };
+
+  return (
+    <>
+      <div className="mb-8 flex gap-2 items-center">
+        <Button variant="ghost" onClick={onBack} size="icon">
+          <ArrowLeft size={18} />
+        </Button>
+        <h2 className="text-xl text-[18px] font-semibold">
+          Add from {connector.name}
+        </h2>
+      </div>
+
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Select a bucket to ingest, or sync everything at once.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => refetch()}
+              disabled={isLoading}
+              title="Refresh bucket status"
+            >
+              <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+            </Button>
+            <Button
+              className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
+              onClick={syncAll}
+              disabled={syncMutation.isPending}
+            >
+              {syncMutation.isPending && !syncingBucket
+                ? "Ingesting…"
+                : "Sync All Buckets"}
+            </Button>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+          </div>
+        ) : !buckets?.length ? (
+          <div className="rounded-lg border p-6 text-center text-muted-foreground text-sm">
+            No buckets found. Check your IBM COS credentials and endpoint.
+          </div>
+        ) : (
+          <div className="rounded-lg border divide-y">
+            {buckets.map((bucket) => (
+              <div
+                key={bucket.name}
+                className="flex items-center justify-between px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="font-medium text-sm">{bucket.name}</p>
+                    {bucket.ingested_count > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {bucket.ingested_count} document{bucket.ingested_count !== 1 ? "s" : ""} ingested
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => syncBucket(bucket.name)}
+                  disabled={syncMutation.isPending}
+                >
+                  {syncingBucket === bucket.name
+                    ? "Ingesting…"
+                    : bucket.ingested_count > 0
+                      ? "Re-sync"
+                      : "Ingest"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
 
 // CloudFile interface is now imported from the unified cloud picker
 
@@ -31,6 +207,8 @@ export default function UploadProviderPage() {
   } = useGetConnectorsQuery();
   const connector = connectors.find((c) => c.type === provider);
 
+  const isDirectSyncProvider = DIRECT_SYNC_PROVIDERS.includes(provider);
+
   const { data: tokenData, isLoading: tokenLoading } =
     useGetConnectorTokenQuery(
       {
@@ -42,7 +220,11 @@ export default function UploadProviderPage() {
             : undefined,
       },
       {
-        enabled: !!connector && connector.status === "connected",
+        // Direct-sync providers (e.g. IBM COS) don't use OAuth tokens
+        enabled:
+          !!connector &&
+          connector.status === "connected" &&
+          !isDirectSyncProvider,
       },
     );
 
@@ -61,7 +243,8 @@ export default function UploadProviderPage() {
   });
 
   const accessToken = tokenData?.access_token || null;
-  const isLoading = connectorsLoading || tokenLoading;
+  const isLoading =
+    connectorsLoading || (!isDirectSyncProvider && tokenLoading);
   const isIngesting = syncMutation.isPending;
 
   // Error handling
@@ -190,6 +373,19 @@ export default function UploadProviderPage() {
           </div>
         </div>
       </>
+    );
+  }
+
+  // Direct-sync providers (e.g. IBM COS) show a bucket list with sync status.
+  if (isDirectSyncProvider && connector.status === "connected") {
+    return (
+      <IBMCOSBucketView
+        connector={connector}
+        syncMutation={syncMutation}
+        addTask={addTask}
+        onBack={() => router.back()}
+        onDone={() => router.push("/knowledge")}
+      />
     );
   }
 
