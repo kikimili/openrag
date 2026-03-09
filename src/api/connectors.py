@@ -917,6 +917,205 @@ async def ibm_cos_bucket_status(
 
 
 # ---------------------------------------------------------------------------
+# Amazon S3 / S3-compatible endpoints
+# ---------------------------------------------------------------------------
+
+class S3ConfigureBody(BaseModel):
+    access_key: Optional[str] = None
+    secret_key: Optional[str] = None
+    endpoint_url: Optional[str] = None
+    region: Optional[str] = None
+    bucket_names: Optional[List[str]] = None
+    connection_id: Optional[str] = None
+
+
+async def s3_defaults(
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
+    """Return current S3 env-var defaults for pre-filling the config dialog.
+
+    Sensitive values (secret key) are masked — only whether they are set is returned.
+    """
+    import os
+
+    access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    endpoint_url = os.getenv("AWS_S3_ENDPOINT", "")
+    region = os.getenv("AWS_REGION", "")
+
+    connections = await connector_service.connection_manager.list_connections(
+        user_id=user.user_id, connector_type="aws_s3"
+    )
+    conn_config = {}
+    if connections:
+        conn_config = connections[0].config or {}
+
+    def _pick(conn_key, env_val):
+        return conn_config.get(conn_key) or env_val
+
+    return JSONResponse({
+        "access_key_set": bool(access_key or conn_config.get("access_key")),
+        "secret_key_set": bool(secret_key or conn_config.get("secret_key")),
+        "endpoint": _pick("endpoint_url", endpoint_url),
+        "region": _pick("region", region),
+        "bucket_names": conn_config.get("bucket_names", []),
+        "connection_id": connections[0].connection_id if connections else None,
+    })
+
+
+async def s3_configure(
+    body: S3ConfigureBody,
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
+    """Create or update an S3 connection with explicit credentials.
+
+    Tests the credentials by listing buckets, then persists the connection.
+    """
+    import os
+    from connectors.aws_s3.auth import create_s3_resource
+
+    access_key = body.access_key or os.getenv("AWS_ACCESS_KEY_ID")
+    secret_key = body.secret_key or os.getenv("AWS_SECRET_ACCESS_KEY")
+
+    # Fall back to existing connection config
+    existing_connections = await connector_service.connection_manager.list_connections(
+        user_id=user.user_id, connector_type="aws_s3"
+    )
+    if not access_key and existing_connections:
+        access_key = existing_connections[0].config.get("access_key")
+    if not secret_key and existing_connections:
+        secret_key = existing_connections[0].config.get("secret_key")
+
+    if not access_key or not secret_key:
+        return JSONResponse(
+            {"error": "access_key and secret_key are required"},
+            status_code=400,
+        )
+
+    conn_config: dict = {
+        "access_key": access_key.strip(),
+        "secret_key": secret_key.strip(),
+    }
+    if body.endpoint_url:
+        conn_config["endpoint_url"] = body.endpoint_url.strip()
+    if body.region:
+        conn_config["region"] = body.region.strip()
+    if body.bucket_names is not None:
+        conn_config["bucket_names"] = body.bucket_names
+
+    # Test credentials
+    try:
+        s3 = create_s3_resource(conn_config)
+        list(s3.buckets.all())
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Could not connect to S3: {exc}"},
+            status_code=400,
+        )
+
+    # Persist: update existing connection or create a new one
+    if body.connection_id:
+        existing = await connector_service.connection_manager.get_connection(body.connection_id)
+        if existing and existing.user_id == user.user_id:
+            await connector_service.connection_manager.update_connection(
+                connection_id=body.connection_id,
+                config=conn_config,
+            )
+            connector_service.connection_manager.active_connectors.pop(body.connection_id, None)
+            return JSONResponse({"connection_id": body.connection_id, "status": "connected"})
+
+    connection_id = await connector_service.connection_manager.create_connection(
+        connector_type="aws_s3",
+        name="Amazon S3",
+        config=conn_config,
+        user_id=user.user_id,
+    )
+    return JSONResponse({"connection_id": connection_id, "status": "connected"})
+
+
+async def s3_list_buckets(
+    connection_id: str,
+    connector_service=Depends(get_connector_service),
+    user: User = Depends(get_current_user),
+):
+    """List all buckets accessible with the stored S3 credentials."""
+    from connectors.aws_s3.auth import create_s3_resource
+
+    connection = await connector_service.connection_manager.get_connection(connection_id)
+    if not connection or connection.user_id != user.user_id:
+        return JSONResponse({"error": "Connection not found"}, status_code=404)
+    if connection.connector_type != "aws_s3":
+        return JSONResponse({"error": "Not an S3 connection"}, status_code=400)
+
+    try:
+        s3 = create_s3_resource(connection.config)
+        buckets = [b.name for b in s3.buckets.all()]
+        return JSONResponse({"buckets": buckets})
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed to list buckets: {exc}"}, status_code=500)
+
+
+async def s3_bucket_status(
+    connection_id: str,
+    connector_service=Depends(get_connector_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+):
+    """Return all buckets for an S3 connection with their ingestion status."""
+    from connectors.aws_s3.auth import create_s3_resource
+
+    connection = await connector_service.connection_manager.get_connection(connection_id)
+    if not connection or connection.user_id != user.user_id:
+        return JSONResponse({"error": "Connection not found"}, status_code=404)
+    if connection.connector_type != "aws_s3":
+        return JSONResponse({"error": "Not an S3 connection"}, status_code=400)
+
+    # 1. List all buckets from S3
+    try:
+        s3 = create_s3_resource(connection.config)
+        all_buckets = [b.name for b in s3.buckets.all()]
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed to list buckets: {exc}"}, status_code=500)
+
+    # 2. Count indexed documents per bucket from OpenSearch
+    ingested_counts: dict = {}
+    try:
+        opensearch_client = session_manager.get_user_opensearch_client(
+            user.user_id, user.jwt_token
+        )
+        query_body = {
+            "size": 0,
+            "query": {"term": {"connector_type": "aws_s3"}},
+            "aggs": {
+                "doc_ids": {
+                    "terms": {"field": "document_id", "size": 50000}
+                }
+            },
+        }
+        index_name = get_index_name(user.user_id)
+        os_resp = opensearch_client.search(index=index_name, body=query_body)
+        for bucket_entry in os_resp.get("aggregations", {}).get("doc_ids", {}).get("buckets", []):
+            doc_id = bucket_entry["key"]
+            if "::" in doc_id:
+                bucket_name = doc_id.split("::")[0]
+                ingested_counts[bucket_name] = ingested_counts.get(bucket_name, 0) + 1
+    except Exception:
+        pass  # OpenSearch unavailable — show zero counts
+
+    result = [
+        {
+            "name": bucket,
+            "ingested_count": ingested_counts.get(bucket, 0),
+            "is_synced": ingested_counts.get(bucket, 0) > 0,
+        }
+        for bucket in all_buckets
+    ]
+    return JSONResponse({"buckets": result})
+
+
+# ---------------------------------------------------------------------------
 
 async def sync_all_connectors(
     connector_service=Depends(get_connector_service),
@@ -931,7 +1130,7 @@ async def sync_all_connectors(
         jwt_token = user.jwt_token
 
         # Cloud connector types to sync
-        cloud_connector_types = ["google_drive", "onedrive", "sharepoint", "ibm_cos"]
+        cloud_connector_types = ["google_drive", "onedrive", "sharepoint", "ibm_cos", "aws_s3"]
         
         all_task_ids = []
         synced_connectors = []

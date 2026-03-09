@@ -181,6 +181,17 @@ CONFIG_SECTIONS: list[ConfigSection] = [
             "aws_secret_access_key", "AWS_SECRET_ACCESS_KEY", "Secret Access Key",
             placeholder="", secret=True,
         ),
+        ConfigField(
+            "aws_s3_endpoint", "AWS_S3_ENDPOINT", "S3 Endpoint URL (optional)",
+            placeholder="",
+            helper_text="Leave empty for AWS S3. For MinIO, R2, or other S3-compatible services, enter the endpoint URL.",
+        ),
+        ConfigField(
+            "aws_region", "AWS_REGION", "AWS Region (optional)",
+            placeholder="us-east-1",
+            default="us-east-1",
+            helper_text="AWS region (e.g. us-east-1, eu-west-1). Default: us-east-1.",
+        ),
     ], advanced=True, gate_prompt="Configure AWS credentials?"),
 
     # ── IBM Cloud Object Storage ─────────────────────────────────

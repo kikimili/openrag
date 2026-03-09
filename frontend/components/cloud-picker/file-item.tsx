@@ -5,6 +5,7 @@ import GoogleDriveIcon from "@/components/icons/google-drive-logo";
 import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
 import OneDriveIcon from "@/components/icons/one-drive-logo";
 import SharePointIcon from "@/components/icons/share-point-logo";
+import AwsLogo from "@/components/icons/aws-logo";
 import { Button } from "@/components/ui/button";
 import type { CloudFile } from "./types";
 
@@ -57,6 +58,8 @@ const getProviderIcon = (provider: string) => {
       return <SharePointIcon />;
     case "ibm_cos":
       return <IBMCOSIcon />;
+    case "aws_s3":
+      return <AwsLogo />;
     default:
       return <FileText className="h-6 w-6" />;
   }

@@ -12,15 +12,18 @@ import GoogleDriveIcon from "@/components/icons/google-drive-logo";
 import IBMCOSIcon from "@/components/icons/ibm-cos-icon";
 import OneDriveIcon from "@/components/icons/one-drive-logo";
 import SharePointIcon from "@/components/icons/share-point-logo";
+import AwsLogo from "@/components/icons/aws-logo";
 import { useAuth } from "@/contexts/auth-context";
 import ConnectorCard, { type Connector } from "./connector-card";
 import ConnectorsSkeleton from "./connectors-skeleton";
 import IBMCOSSettingsDialog from "./ibm-cos-settings-dialog";
+import S3SettingsDialog from "./s3-settings-dialog";
 
 export default function ConnectorCards() {
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const router = useRouter();
   const [ibmCOSDialogOpen, setIBMCOSDialogOpen] = useState(false);
+  const [s3DialogOpen, setS3DialogOpen] = useState(false);
 
   const { data: queryConnectors = [], isLoading: connectorsLoading } =
     useGetConnectorsQuery({
@@ -36,6 +39,7 @@ export default function ConnectorCards() {
       sharepoint: <SharePointIcon />,
       onedrive: <OneDriveIcon />,
       "ibm-cos": <IBMCOSIcon />,
+      "aws-s3": <AwsLogo />,
     };
     return (
       iconMap[iconName] || (
@@ -71,6 +75,9 @@ export default function ConnectorCards() {
   const getConfigureHandler = (connector: Connector) => {
     if (connector.type === "ibm_cos") {
       return () => setIBMCOSDialogOpen(true);
+    }
+    if (connector.type === "aws_s3") {
+      return () => setS3DialogOpen(true);
     }
     return undefined;
   };
@@ -113,6 +120,10 @@ export default function ConnectorCards() {
       <IBMCOSSettingsDialog
         open={ibmCOSDialogOpen}
         setOpen={setIBMCOSDialogOpen}
+      />
+      <S3SettingsDialog
+        open={s3DialogOpen}
+        setOpen={setS3DialogOpen}
       />
     </>
   );

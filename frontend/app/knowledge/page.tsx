@@ -45,6 +45,7 @@ import IBMLogo from "../../components/icons/ibm-logo";
 import IBMCOSIcon from "../../components/icons/ibm-cos-icon";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
+import AwsLogo from "../../components/icons/aws-logo";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
 
@@ -67,6 +68,8 @@ function getSourceIcon(connectorType?: string) {
       return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
     case "ibm_cos":
       return <IBMCOSIcon className="h-4 w-4 flex-shrink-0" />;
+    case "aws_s3":
+      return <AwsLogo className="h-4 w-4 flex-shrink-0" />;
     default:
       return (
         <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />

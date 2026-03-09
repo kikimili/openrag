@@ -57,6 +57,8 @@ class EnvConfig:
     webhook_base_url: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    aws_s3_endpoint: str = ""
+    aws_region: str = ""
     langflow_public_url: str = ""
 
     # IBM Cloud Object Storage settings
@@ -200,6 +202,8 @@ class EnvManager:
             "WEBHOOK_BASE_URL": "webhook_base_url",
             "AWS_ACCESS_KEY_ID": "aws_access_key_id",
             "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",  # pragma: allowlist secret
+            "AWS_S3_ENDPOINT": "aws_s3_endpoint",
+            "AWS_REGION": "aws_region",
             "LANGFLOW_PUBLIC_URL": "langflow_public_url",
             "IBM_COS_API_KEY": "ibm_cos_api_key",  # pragma: allowlist secret
             "IBM_COS_SERVICE_INSTANCE_ID": "ibm_cos_service_instance_id",
