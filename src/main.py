@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import tempfile
+from html.parser import HTMLParser
 
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
@@ -96,6 +97,30 @@ logger = get_logger(__name__)
 
 # Files to exclude from startup ingestion
 EXCLUDED_INGESTION_FILES = {"warmup_ocr.pdf"}
+
+
+class _VisibleTextHTMLParser(HTMLParser):
+    """Extract visible text while skipping script/style content."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._ignored_depth = 0
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() in {"script", "style"}:
+            self._ignored_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag.lower() in {"script", "style"} and self._ignored_depth > 0:
+            self._ignored_depth -= 1
+
+    def handle_data(self, data):
+        if self._ignored_depth == 0 and data and not data.isspace():
+            self._chunks.append(data)
+
+    def get_text(self) -> str:
+        return " ".join(self._chunks)
 
 
 async def wait_for_opensearch():
@@ -561,24 +586,16 @@ async def _materialize_default_docs_url_as_text_file(
         raw_html = response.text
 
     title_match = re.search(
-        r"<title[^>]*>(.*?)</title>", raw_html, flags=re.IGNORECASE | re.DOTALL
-    )
-    title = html.unescape(title_match.group(1).strip()) if title_match else "OpenRAG"
-
-    no_scripts = re.sub(
-        r"<script[^>]*>.*?</script>",
-        " ",
+        r"<title[^>]*>(.*?)</title\s*>",
         raw_html,
         flags=re.IGNORECASE | re.DOTALL,
     )
-    no_styles = re.sub(
-        r"<style[^>]*>.*?</style>",
-        " ",
-        no_scripts,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    text_only = re.sub(r"<[^>]+>", " ", no_styles)
-    normalized_text = re.sub(r"\s+", " ", html.unescape(text_only)).strip()
+    title = html.unescape(title_match.group(1).strip()) if title_match else "OpenRAG"
+
+    text_parser = _VisibleTextHTMLParser()
+    text_parser.feed(raw_html)
+    text_parser.close()
+    normalized_text = re.sub(r"\s+", " ", text_parser.get_text()).strip()
 
     content = (
         f"{title}\n\n"
