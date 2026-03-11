@@ -572,7 +572,6 @@ async def _ingest_default_documents_url_langflow(
         crawl_depth=crawl_depth,
     )
 
-    from models.url import LangflowUrlProcessor
     from session_manager import AnonymousUser
 
     anonymous_user = AnonymousUser()
@@ -585,18 +584,30 @@ async def _ingest_default_documents_url_langflow(
         if hasattr(session_manager, "_anonymous_jwt"):
             effective_jwt = session_manager._anonymous_jwt
 
-    processor = LangflowUrlProcessor(
-        langflow_file_service=langflow_file_service,
-        session_manager=session_manager,
+    default_tweaks = {
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+            "docs_metadata": [
+                {"key": "owner", "value": None},
+                {"key": "owner_name", "value": anonymous_user.name},
+                {"key": "owner_email", "value": anonymous_user.email},
+                {"key": "connector_type", "value": "openrag_docs"},
+                {"key": "is_sample_data", "value": "true"},
+            ]
+        }
+    }
+
+    task_id = await task_service.create_langflow_url_upload_task(
+        owner_user_id=None,
         docs_url=docs_url,
         crawl_depth=crawl_depth,
-        owner_user_id=None,
+        langflow_file_service=langflow_file_service,
+        session_manager=session_manager,
         jwt_token=effective_jwt,
         owner_name=anonymous_user.name,
         owner_email=anonymous_user.email,
         connector_type="openrag_docs",
+        tweaks=default_tweaks,
     )
-    task_id = await task_service.create_custom_task(None, [docs_url], processor)
 
     logger.info(
         "Started Langflow URL ingestion task for default documents",

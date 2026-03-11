@@ -241,6 +241,7 @@ class LangflowFileService:
         owner_email: Optional[str] = None,
         connector_type: str = "url",
         prevent_outside: bool = True,
+        tweaks: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Run URL-based docs ingestion flow using Langflow global variable passthrough."""
         if not self.flow_id_url_ingest:
@@ -254,6 +255,8 @@ class LangflowFileService:
             "input_type": "chat",
             "output_type": "text",
         }
+        if tweaks:
+            payload["tweaks"] = tweaks
 
         from config.settings import get_openrag_config
         from utils.langflow_headers import add_provider_credentials_to_headers
@@ -276,10 +279,15 @@ class LangflowFileService:
         }
         add_provider_credentials_to_headers(headers, config)
 
+
         logger.info(
             "[LF] Running URL ingestion flow",
             docs_url=docs_url,
             crawl_depth=crawl_depth,
+            connector_type=connector_type,
+            embedding_model=embedding_model,
+            headers=headers,
+            payload=payload,
         )
         resp = await clients.langflow_request(
             "POST",
