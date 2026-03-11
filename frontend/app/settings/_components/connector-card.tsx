@@ -133,19 +133,6 @@ export default function ConnectorCard({
                 )}
               </Button>
             )}
-            <Button
-              variant="outline"
-              onClick={() => onDisconnect(connector)}
-              disabled={isDisconnecting || isConnecting}
-              className="cursor-pointer text-destructive hover:text-destructive"
-              size="iconMd"
-            >
-              {isDisconnecting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-            </Button>
           </div>
         ) : onConfigure ? (
           <Button
