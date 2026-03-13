@@ -499,37 +499,7 @@ function SearchPage() {
         {/* Search Input Area */}
         <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
           <KnowledgeSearchInput />
-          <Button
-            type="button"
-            variant="outline"
-            className="rounded-lg flex-shrink-0"
-            disabled={refreshOpenragDocsMutation.isPending}
-            onClick={async () => {
-              try {
-                toast.info("Refreshing OpenRAG docs...");
-                const result = await refreshOpenragDocsMutation.mutateAsync();
-                toast.success(result.message);
-              } catch (error) {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to refresh OpenRAG docs",
-                );
-              }
-            }}
-          >
-            {refreshOpenragDocsMutation.isPending ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Refreshing docs...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Fetch latest docs
-              </>
-            )}
-          </Button>
+
           <Button
             type="button"
             variant="outline"
@@ -572,6 +542,35 @@ function SearchPage() {
               <>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Sync
+              </>
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-lg flex-shrink-0"
+            disabled={refreshOpenragDocsMutation.isPending}
+            onClick={async () => {
+              try {
+                toast.info("Refreshing OpenRAG docs...");
+                const result = await refreshOpenragDocsMutation.mutateAsync();
+                toast.success(result.message);
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to refresh OpenRAG docs",
+                );
+              }
+            }}
+          >
+            {refreshOpenragDocsMutation.isPending ? (
+              <>
+                Refreshing docs...
+              </>
+            ) : (
+              <>
+                Fetch latest docs
               </>
             )}
           </Button>
