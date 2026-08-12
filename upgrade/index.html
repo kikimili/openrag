@@ -11,7 +11,7 @@
 <script>!function(){function e(){if(void 0!==window.truste&&window.truste.cma){var e=window.truste.cma.callApi("getConsent",window.location.href)||{},n=1===e[2],t=1===e[3];gtag("consent","update",{ad_storage:n?"granted":"denied",ad_user_data:n?"granted":"denied",ad_personalization:n?"granted":"denied",analytics_storage:t?"granted":"denied"})}}window.addEventListener&&(window.addEventListener("cm_data_subject_consent_changed",e),window.addEventListener("cm_consent_preferences_set",e)),"complete"===document.readyState?e():window.addEventListener("load",e)}()</script>
 <script>window._ibmAnalytics={settings:{name:"DataStax",tealiumProfileName:"ibm-subsidiary"},trustarc:{privacyPolicyLink:"https://ibm.com/privacy"}},window.digitalData={page:{pageInfo:{ibm:{siteId:"IBM_DataStax"}},category:{primaryCategory:"PC230"}}}</script>
 <script src="//1.www.s81c.com/common/stats/ibm-common.js" async="true"></script><link rel="stylesheet" href="/assets/css/styles.4eb4a30d.css">
-<script src="/assets/js/runtime~main.7f2ae0f3.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.32946515.js" defer="defer"></script>
 <script src="/assets/js/main.19c7be0d.js" defer="defer"></script>
 </head>
 <body>
@@ -92,13 +92,20 @@ If you want to use a specific container version that is different from your term
 </ol>
 <ol start="2">
 <li class="">
+<p>If you <a class="" href="/docker#private-registry">pull images from a private registry</a>, mirror the new version&#x27;s images to your registry first, and then set <code>OPENRAG_IMAGE_TAG</code> or <code>OPENRAG_VERSION</code> in your <code>.env</code> file to the new tag.
+The pull in the next step fails if the new images aren&#x27;t present in your registry yet.</p>
+</li>
+<li class="">
 <p>Fetch and apply the latest container images while preserving your OpenRAG data:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockTitle_OeMC">Docker</div><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">docker</span><span class="token plain"> compose pull</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token function" style="color:#d73a49">docker</span><span class="token plain"> compose up </span><span class="token parameter variable" style="color:#36acaa">-d</span><span class="token plain"> --force-recreate</span><br></div></code></pre></div></div>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockTitle_OeMC">Podman</div><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token function" style="color:#d73a49">podman</span><span class="token plain"> compose pull</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token function" style="color:#d73a49">podman</span><span class="token plain"> compose up </span><span class="token parameter variable" style="color:#36acaa">-d</span><span class="token plain"> --force-recreate</span><br></div></code></pre></div></div>
 <p>By default, OpenRAG&#x27;s <code>docker-compose</code> files pull the latest container images.
 To use a specific earlier version, you set <code>OPENRAG_VERSION</code> in your <code>.env</code> file to the desired image tag, and then run OpenRAG with <code>docker compose</code>, <code>podman compose</code>, or <a class="" href="/support/contribute"><code>make</code></a> commands.
-Overriding the <code>OPENRAG_VERSION</code> is only possible with self-managed deployments.
+Overriding the image tag is only possible with self-managed deployments.
 This allows you to pin your OpenRAG containers to a specific version rather than deploying the latest version.</p>
+<p>You can also set <a class="" href="/reference/configuration#container-image-and-registry-settings"><code>OPENRAG_IMAGE_TAG</code></a>, which overrides the image tag for all OpenRAG images and takes precedence over <code>OPENRAG_VERSION</code>.
+If both variables are set, OpenRAG uses <code>OPENRAG_IMAGE_TAG</code>, so check that variable first if the containers don&#x27;t start at the version you expect.
+<code>OPENRAG_IMAGE_TAG</code> is primarily useful when you <a class="" href="/docker#private-registry">pull images from a private registry</a> that tags them differently from the OpenRAG releases.</p>
 </li>
 <li class="">
 <p>After the containers start, access the OpenRAG application at <code>http://localhost:3000</code>.</p>
